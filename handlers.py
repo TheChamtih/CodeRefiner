@@ -14,9 +14,13 @@ import math
 MIN_AGE = 6
 MAX_AGE = 18
 
+
 def is_valid_phone(phone: str) -> bool:
     """Проверяет, начинается ли номер на +7 или 8."""
-    return re.match(r'^(\+7|8)[\s\-]?(\d{3})[\s\-]?(\d{3})[\s\-]?(\d{2})[\s\-]?(\d{2})$', phone) is not None
+    return re.match(
+        r'^(\+7|8)[\s\-]?(\d{3})[\s\-]?(\d{3})[\s\-]?(\d{2})[\s\-]?(\d{2})$',
+        phone) is not None
+
 
 def notify_admins(context: CallbackContext, message: str):
     """Отправляет уведомление всем администраторам."""
@@ -27,26 +31,31 @@ def notify_admins(context: CallbackContext, message: str):
         except Exception as e:
             print(f"Failed to send message to admin {admin}: {e}")
 
+
 def clear_user_data(context: CallbackContext):
     """Очищает данные пользователя."""
     if context and hasattr(context, 'user_data'):
         context.user_data.clear()
 
+
 def get_connection():
     """Gets a connection to the PostgreSQL database."""
-    return psycopg2.connect(os.environ['DATABASE_URL'], cursor_factory=DictCursor)
+    return psycopg2.connect(os.environ['DATABASE_URL'],
+                            cursor_factory=DictCursor)
+
 
 def add_course_tags(cursor, course_id: int, tags: list):
     """Добавляет или обновляет теги для курса."""
     # Сначала удаляем существующие теги
-    cursor.execute('DELETE FROM course_tags WHERE course_id = %s', (course_id,))
+    cursor.execute('DELETE FROM course_tags WHERE course_id = %s',
+                   (course_id, ))
 
     # Добавляем новые теги
     for tag in tags:
         cursor.execute(
             'INSERT INTO course_tags (course_id, tag) VALUES (%s, %s)',
-            (course_id, tag.lower().strip())
-        )
+            (course_id, tag.lower().strip()))
+
 
 def update_course_recommendations():
     """Обновляет теги для всех курсов."""
@@ -55,11 +64,17 @@ def update_course_recommendations():
 
     # Предопределенные теги для каждого типа курса
     course_tags = {
-        'python': ['программирование', 'python', 'coding', 'алгоритмы', 'разработка'],
-        'игры': ['программирование', 'игры', 'unity', 'геймдев', 'разработка игр'],
-        'робототехника': ['робототехника', 'arduino', 'электроника', 'схемы', 'конструирование'],
+        'python':
+        ['программирование', 'python', 'coding', 'алгоритмы', 'разработка'],
+        'игры':
+        ['программирование', 'игры', 'unity', 'геймдев', 'разработка игр'],
+        'робототехника': [
+            'робототехника', 'arduino', 'электроника', 'схемы',
+            'конструирование'
+        ],
         'дизайн': ['дизайн', 'графика', 'art', 'creative', 'photoshop'],
-        'математика': ['математика', 'алгебра', 'логика', 'геометрия', 'числа'],
+        'математика':
+        ['математика', 'алгебра', 'логика', 'геометрия', 'числа'],
         'блогинг': ['блогинг', 'медиа', 'контент', 'youtube', 'соцсети']
     }
 
@@ -81,7 +96,9 @@ def update_course_recommendations():
     conn.commit()
     conn.close()
 
-def calculate_course_score(user_age: int, user_interests: str, course: Dict) -> float:
+
+def calculate_course_score(user_age: int, user_interests: str,
+                           course: Dict) -> float:
     """Вычисляет релевантность курса для пользователя."""
     score = 1.0
 
@@ -96,7 +113,8 @@ def calculate_course_score(user_age: int, user_interests: str, course: Dict) -> 
 
     # Скоринг по интересам
     user_interests_list = set(user_interests.lower().split())
-    course_tags = set(course['tags'].lower().split(', ')) if 'tags' in course else set()
+    course_tags = set(
+        course['tags'].lower().split(', ')) if 'tags' in course else set()
 
     # Считаем совпадения с тегами
     matching_tags = user_interests_list.intersection(course_tags)
@@ -111,42 +129,56 @@ def calculate_course_score(user_age: int, user_interests: str, course: Dict) -> 
 
     return score
 
+
 def get_course_tags(course_id: int) -> List[str]:
     """Получает теги курса из базы данных."""
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute('SELECT tag FROM course_tags WHERE course_id = %s', (course_id,))
+    cursor.execute('SELECT tag FROM course_tags WHERE course_id = %s',
+                   (course_id, ))
     tags = [row[0].lower() for row in cursor.fetchall()]
     conn.close()
     return tags
+
 
 def validate_age(age: int) -> bool:
     """Проверяет, что возраст находится в допустимом диапазоне."""
     return MIN_AGE <= age <= MAX_AGE
 
+
 # States
-NAME, AGE, INTERESTS, PARENT_NAME, PHONE, COURSE_SELECTION, LOCATION_SELECTION, CONFIRMATION = range(8)
-EDIT_COURSE_ID, EDIT_COURSE_NAME, EDIT_COURSE_DESCRIPTION, EDIT_COURSE_MIN_AGE, EDIT_COURSE_MAX_AGE = range(5)
+NAME, AGE, INTERESTS, PARENT_NAME, PHONE, COURSE_SELECTION, LOCATION_SELECTION, CONFIRMATION = range(
+    8)
+EDIT_COURSE_ID, EDIT_COURSE_NAME, EDIT_COURSE_DESCRIPTION, EDIT_COURSE_MIN_AGE, EDIT_COURSE_MAX_AGE = range(
+    5)
+
 
 def start(update: Update, context: CallbackContext) -> int:
     """Начало диалога для записи на пробное занятие."""
-    update.message.reply_text("Привет! Давайте подберем курс для вашего ребенка. Как зовут вашего ребенка?")
+    update.message.reply_text(
+        "Привет! Давайте подберем курс для вашего ребенка. Как зовут вашего ребенка?"
+    )
     return NAME
+
 
 def get_name(update: Update, context: CallbackContext) -> int:
     """Получение имени ребенка."""
     user_name = update.message.text
     if context and hasattr(context, 'user_data'):
         context.user_data['child_name'] = user_name
-    update.message.reply_text(f"Отлично, {user_name}! Сколько лет вашему ребенку?")
+    update.message.reply_text(
+        f"Отлично, {user_name}! Сколько лет вашему ребенку?")
     return AGE
+
 
 def get_age(update: Update, context: CallbackContext) -> int:
     """Получение возраста ребенка."""
     try:
         user_age = int(update.message.text)
         if not validate_age(user_age):
-            update.message.reply_text(f"Возраст должен быть от {MIN_AGE} до {MAX_AGE} лет. Пожалуйста, введите корректный возраст.")
+            update.message.reply_text(
+                f"Возраст должен быть от {MIN_AGE} до {MAX_AGE} лет. Пожалуйста, введите корректный возраст."
+            )
             return AGE
     except ValueError:
         update.message.reply_text("Пожалуйста, введите число.")
@@ -154,8 +186,11 @@ def get_age(update: Update, context: CallbackContext) -> int:
 
     if context and hasattr(context, 'user_data'):
         context.user_data['child_age'] = user_age
-    update.message.reply_text("Чем увлекается ваш ребенок? (например, программирование, дизайн, математика и т.д.)")
+    update.message.reply_text(
+        "Чем увлекается ваш ребенок? (например, программирование, дизайн, математика и т.д.)"
+    )
     return INTERESTS
+
 
 def get_interests(update: Update, context: CallbackContext) -> int:
     """Получение интересов ребенка."""
@@ -165,19 +200,24 @@ def get_interests(update: Update, context: CallbackContext) -> int:
     update.message.reply_text("Как вас зовут? (Имя родителя)")
     return PARENT_NAME
 
+
 def get_parent_name(update: Update, context: CallbackContext) -> int:
     """Получение имени родителя."""
     parent_name = update.message.text
     if context and hasattr(context, 'user_data'):
         context.user_data['parent_name'] = parent_name
-    update.message.reply_text("Укажите ваш номер телефона для связи (начинается на +7 или 8):")
+    update.message.reply_text(
+        "Укажите ваш номер телефона для связи (начинается на +7 или 8):")
     return PHONE
+
 
 def get_phone(update: Update, context: CallbackContext) -> int:
     """Получение номера телефона и подбор курсов."""
     phone = update.message.text
     if not is_valid_phone(phone):
-        update.message.reply_text("Номер телефона должен начинаться на +7 или 8. Пожалуйста, введите корректный номер.")
+        update.message.reply_text(
+            "Номер телефона должен начинаться на +7 или 8. Пожалуйста, введите корректный номер."
+        )
         return PHONE
 
     if context and hasattr(context, 'user_data'):
@@ -185,10 +225,11 @@ def get_phone(update: Update, context: CallbackContext) -> int:
 
     # Получаем курсы, подходящие по возрасту
     child_age = context.user_data.get('child_age')
-    child_interests = context.user_data.get('child_interests','').lower()
+    child_interests = context.user_data.get('child_interests', '').lower()
 
     if child_age is None or child_interests is None:
-        update.message.reply_text("Произошла ошибка. Пожалуйста, начните заново.")
+        update.message.reply_text(
+            "Произошла ошибка. Пожалуйста, начните заново.")
         clear_user_data(context)
         return ConversationHandler.END
 
@@ -198,7 +239,8 @@ def get_phone(update: Update, context: CallbackContext) -> int:
     # Обновляем рекомендации для курсов
     update_course_recommendations()
 
-    cursor.execute('''
+    cursor.execute(
+        '''
         SELECT DISTINCT c.id, c.name, c.description, c.min_age, c.max_age,
                string_agg(ct.tag, ', ') as tags
         FROM courses c
@@ -211,7 +253,8 @@ def get_phone(update: Update, context: CallbackContext) -> int:
     conn.close()
 
     if not courses:
-        update.message.reply_text("К сожалению, для вашего возраста нет доступных курсов.")
+        update.message.reply_text(
+            "К сожалению, для вашего возраста нет доступных курсов.")
         return ConversationHandler.END
 
     # Вычисляем релевантность каждого курса
@@ -237,7 +280,8 @@ def get_phone(update: Update, context: CallbackContext) -> int:
 
     for course, score in scored_courses:
         button_text = f"📚 {course['name']}"
-        matching_tags = set(child_interests.split()).intersection(set(course['tags'].split(', ')))
+        matching_tags = set(child_interests.split()).intersection(
+            set(course['tags'].split(', ')))
 
         if score > 1.5:
             button_text = "⭐ " + button_text
@@ -245,21 +289,23 @@ def get_phone(update: Update, context: CallbackContext) -> int:
                 f"🌟 {course['name']}\n"
                 f"📝 {course['description']}\n"
                 f"👶 Возраст: {course['min_age']}-{course['max_age']} лет\n"
-                f"🏷️ Подходящие интересы: {', '.join(matching_tags)}\n\n"
-            )
+                f"🏷️ Подходящие интересы: {', '.join(matching_tags)}\n\n")
         elif score > 1.2:
             recommendation_text += (
                 f"📚 {course['name']}\n"
-                f"👶 Возраст: {course['min_age']}-{course['max_age']} лет\n\n"
-            )
+                f"👶 Возраст: {course['min_age']}-{course['max_age']} лет\n\n")
 
-        keyboard.append([InlineKeyboardButton(button_text, callback_data=f"course_{course['id']}")])
+        keyboard.append([
+            InlineKeyboardButton(button_text,
+                                 callback_data=f"course_{course['id']}")
+        ])
 
     keyboard.append([InlineKeyboardButton("❌ Выйти", callback_data="exit")])
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     update.message.reply_text(recommendation_text, reply_markup=reply_markup)
     return COURSE_SELECTION
+
 
 def select_course(update: Update, context: CallbackContext) -> int:
     """Обработчик выбора курса."""
@@ -268,7 +314,8 @@ def select_course(update: Update, context: CallbackContext) -> int:
         query.answer()
 
     if query and query.data == "exit":
-        query.edit_message_text("Диалог завершен. Если хотите начать заново, напишите /start.")
+        query.edit_message_text(
+            "Диалог завершен. Если хотите начать заново, напишите /start.")
         clear_user_data(context)
         return ConversationHandler.END
 
@@ -280,12 +327,14 @@ def select_course(update: Update, context: CallbackContext) -> int:
         # Получаем доступные локации
         conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute('SELECT id, district, address FROM locations ORDER BY district')
+        cursor.execute(
+            'SELECT id, district, address FROM locations ORDER BY district')
         locations = cursor.fetchall()
         conn.close()
 
         if not locations:
-            query.edit_message_text("К сожалению, сейчас нет доступных локаций для обучения.")
+            query.edit_message_text(
+                "К сожалению, сейчас нет доступных локаций для обучения.")
             return ConversationHandler.END
 
         # Группируем локации по районам
@@ -299,27 +348,31 @@ def select_course(update: Update, context: CallbackContext) -> int:
                     keyboard.extend(district_buttons)
                 district_buttons = []
                 current_district = loc[1]
-                keyboard.append([InlineKeyboardButton(f"📍 Район: {loc[1]}", callback_data="district_header")])
+                keyboard.append([
+                    InlineKeyboardButton(f"📍 Район: {loc[1]}",
+                                         callback_data="district_header")
+                ])
 
-            district_buttons.append([InlineKeyboardButton(
-                f"🏫 {loc[2]}", 
-                callback_data=f"location_{loc[0]}"
-            )])
+            district_buttons.append([
+                InlineKeyboardButton(f"🏫 {loc[2]}",
+                                     callback_data=f"location_{loc[0]}")
+            ])
 
         if district_buttons:  # Добавляем последние кнопки
             keyboard.extend(district_buttons)
 
-        keyboard.append([InlineKeyboardButton("❌ Выйти", callback_data="exit")])
+        keyboard.append(
+            [InlineKeyboardButton("❌ Выйти", callback_data="exit")])
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         query.edit_message_text(
             "Выберите удобное место обучения:\n"
             "Сначала найдите свой район, затем выберите адрес.",
-            reply_markup=reply_markup
-        )
+            reply_markup=reply_markup)
         return LOCATION_SELECTION
     else:
         return ConversationHandler.END
+
 
 def select_location(update: Update, context: CallbackContext) -> int:
     """Обработчик выбора локации."""
@@ -328,7 +381,8 @@ def select_location(update: Update, context: CallbackContext) -> int:
         query.answer()
 
     if query and query.data == "exit":
-        query.edit_message_text("Диалог завершен. Если хотите начать заново, напишите /start.")
+        query.edit_message_text(
+            "Диалог завершен. Если хотите начать заново, напишите /start.")
         clear_user_data(context)
         return ConversationHandler.END
 
@@ -344,7 +398,8 @@ def select_location(update: Update, context: CallbackContext) -> int:
         conn = get_connection()
         cursor = conn.cursor()
 
-        cursor.execute('''
+        cursor.execute(
+            '''
             SELECT c.name, c.description, l.district, l.address
             FROM courses c, locations l
             WHERE c.id = %s AND l.id = %s
@@ -354,27 +409,28 @@ def select_location(update: Update, context: CallbackContext) -> int:
         conn.close()
 
         if not course_location:
-            query.edit_message_text("Произошла ошибка при выборе локации. Пожалуйста, начните заново.")
+            query.edit_message_text(
+                "Произошла ошибка при выборе локации. Пожалуйста, начните заново."
+            )
             return ConversationHandler.END
 
-        confirmation_text = (
-            f"📚 Курс: {course_location[0]}\n"
-            f"📍 Район: {course_location[2]}\n"
-            f"🏫 Адрес: {course_location[3]}\n\n"
-            "Подтвердить запись на пробное занятие?"
-        )
+        confirmation_text = (f"📚 Курс: {course_location[0]}\n"
+                             f"📍 Район: {course_location[2]}\n"
+                             f"🏫 Адрес: {course_location[3]}\n\n"
+                             "Подтвердить запись на пробное занятие?")
 
-        keyboard = [
-            [InlineKeyboardButton("Да ✅", callback_data="confirm_yes"),
-             InlineKeyboardButton("Нет ❌", callback_data="confirm_no")],
-            [InlineKeyboardButton("❌ Выйти", callback_data="exit")]
-        ]
+        keyboard = [[
+            InlineKeyboardButton("Да ✅", callback_data="confirm_yes"),
+            InlineKeyboardButton("Нет ❌", callback_data="confirm_no")
+        ], [InlineKeyboardButton("❌ Выйти", callback_data="exit")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
-        query.edit_message_text(text=confirmation_text, reply_markup=reply_markup)
+        query.edit_message_text(text=confirmation_text,
+                                reply_markup=reply_markup)
         return CONFIRMATION
 
     return LOCATION_SELECTION
+
 
 def confirm_signup(update: Update, context: CallbackContext) -> int:
     """Обработчик записи на курс."""
@@ -384,7 +440,8 @@ def confirm_signup(update: Update, context: CallbackContext) -> int:
 
     if query and query.data == "exit":
         if query:
-            query.edit_message_text("Диалог завершен. Если хотите начать заново, напишите /start.")
+            query.edit_message_text(
+                "Диалог завершен. Если хотите начать заново, напишите /start.")
         clear_user_data(context)
         return ConversationHandler.END
 
@@ -393,40 +450,34 @@ def confirm_signup(update: Update, context: CallbackContext) -> int:
         cursor = conn.cursor()
 
         # Сохраняем данные пользователя
-        cursor.execute('''
+        cursor.execute(
+            '''
             INSERT INTO users (chat_id, parent_name, phone, child_name, child_age, child_interests)
             VALUES (%s, %s, %s, %s, %s, %s)
             RETURNING id
-        ''', (
-            query.message.chat_id,
-            context.user_data.get('parent_name'),
-            context.user_data.get('phone'),
-            context.user_data.get('child_name'),
-            context.user_data.get('child_age'),
-            context.user_data.get('child_interests')
-        ))
+        ''', (query.message.chat_id, context.user_data.get('parent_name'),
+              context.user_data.get('phone'),
+              context.user_data.get('child_name'),
+              context.user_data.get('child_age'),
+              context.user_data.get('child_interests')))
         user_id = cursor.fetchone()[0]
 
         # Записываем на пробное занятие
-        cursor.execute('''
+        cursor.execute(
+            '''
             INSERT INTO trial_lessons (user_id, course_id, location_id, date, confirmed)
             VALUES (%s, %s, %s, %s, FALSE)
-        ''', (
-            user_id,
-            context.user_data.get('selected_course'),
-            context.user_data.get('selected_location'),
-            datetime.now()
-        ))
+        ''', (user_id, context.user_data.get('selected_course'),
+              context.user_data.get('selected_location'), datetime.now()))
 
         # Получаем информацию о курсе и локации для уведомления
-        cursor.execute('''
+        cursor.execute(
+            '''
             SELECT c.name, c.description, l.district, l.address
             FROM courses c, locations l
             WHERE c.id = %s AND l.id = %s
-        ''', (
-            context.user_data.get('selected_course'),
-            context.user_data.get('selected_location')
-        ))
+        ''', (context.user_data.get('selected_course'),
+              context.user_data.get('selected_location')))
         course_location = cursor.fetchone()
         conn.commit()
 
@@ -441,8 +492,7 @@ def confirm_signup(update: Update, context: CallbackContext) -> int:
             f"📝 Описание курса: {course_location[1]}\n"
             f"📍 Район: {course_location[2]}\n"
             f"🏫 Адрес: {course_location[3]}\n"
-            f"📅 Дата записи: {datetime.now().strftime('%d.%m.%Y %H:%M')}"
-        )
+            f"📅 Дата записи: {datetime.now().strftime('%d.%m.%Y %H:%M')}")
         notify_admins(context, admin_message)
 
         if query:
@@ -453,10 +503,13 @@ def confirm_signup(update: Update, context: CallbackContext) -> int:
             )
         conn.close()
     elif query:
-        query.edit_message_text("Хорошо, если передумаете, всегда можете вернуться и записаться позже.")
+        query.edit_message_text(
+            "Хорошо, если передумаете, всегда можете вернуться и записаться позже."
+        )
 
     clear_user_data(context)
     return ConversationHandler.END
+
 
 def get_conversation_handler():
     return ConversationHandler(
@@ -464,21 +517,36 @@ def get_conversation_handler():
         states={
             NAME: [MessageHandler(Filters.text & ~Filters.command, get_name)],
             AGE: [MessageHandler(Filters.text & ~Filters.command, get_age)],
-            INTERESTS: [MessageHandler(Filters.text & ~Filters.command, get_interests)],
-            PARENT_NAME: [MessageHandler(Filters.text & ~Filters.command, get_parent_name)],
-            PHONE: [MessageHandler(Filters.text & ~Filters.command, get_phone)],
-            COURSE_SELECTION: [CallbackQueryHandler(select_course, pattern="^course_|^exit$")],
-            LOCATION_SELECTION: [CallbackQueryHandler(select_location, pattern="^location_|^district_header$|^exit$")],
-            CONFIRMATION: [CallbackQueryHandler(confirm_signup, pattern="^confirm_yes$|^confirm_no$|^exit$")],
+            INTERESTS:
+            [MessageHandler(Filters.text & ~Filters.command, get_interests)],
+            PARENT_NAME:
+            [MessageHandler(Filters.text & ~Filters.command, get_parent_name)],
+            PHONE:
+            [MessageHandler(Filters.text & ~Filters.command, get_phone)],
+            COURSE_SELECTION:
+            [CallbackQueryHandler(select_course, pattern="^course_|^exit$")],
+            LOCATION_SELECTION: [
+                CallbackQueryHandler(
+                    select_location,
+                    pattern="^location_|^district_header$|^exit$")
+            ],
+            CONFIRMATION: [
+                CallbackQueryHandler(
+                    confirm_signup,
+                    pattern="^confirm_yes$|^confirm_no$|^exit$")
+            ],
         },
         fallbacks=[CommandHandler('cancel', cancel)],
     )
 
+
 def cancel(update: Update, context: CallbackContext) -> int:
     """Отмена диалога."""
-    update.message.reply_text("Диалог прерван. Если хотите начать заново, напишите /start.")
+    update.message.reply_text(
+        "Диалог прерван. Если хотите начать заново, напишите /start.")
     clear_user_data(context)
     return ConversationHandler.END
+
 
 def help_command(update: Update, context: CallbackContext):
     user_id = update.message.chat_id
@@ -513,6 +581,7 @@ def help_command(update: Update, context: CallbackContext):
 
     update.message.reply_text(help_text)
 
+
 def list_courses(update: Update, context: CallbackContext):
     """Показывает список всех доступных курсов."""
     conn = get_connection()
@@ -528,33 +597,41 @@ def list_courses(update: Update, context: CallbackContext):
     courses_list = "\n\n".join([
         f"📚 {course[1]}\n"
         f"📝 {course[2]}\n"
-        f"👶 Возраст: {course[3]}-{course[4]} лет"
-        for course in courses
+        f"👶 Возраст: {course[3]}-{course[4]} лет" for course in courses
     ])
     update.message.reply_text(f"Доступные курсы:\n\n{courses_list}")
+
 
 def about(update: Update, context: CallbackContext):
     """Показывает информацию о школе."""
     message = (
-        "🎓 О школе Алгоритмика:\n\n"
-        "Мы - международная школа программирования для детей и подростков.\n\n"
-        "📚 Наши курсы охватывают:\n"
-        "• Программирование\n"
-        "• Создание игр\n"
-        "• Разработку сайтов\n"
-        "• Дизайн\n"
-        "• Математику\n\n"
-        "👨‍🏫 Опытные преподаватели\n"
-        "🎯 Индивидуальный подход\n"
-        "📝 Современная программа обучения\n\n"
-        "Чтобы записаться на пробное занятие, используйте команду /start"
-    )
-    update.message.reply_text(message)
+        """🏫 Алгоритмика — международная школа программирования и математики для детей 7-17 лет.
+
+        Мы помогаем детям освоить навыки будущего:
+        - Программирование на Python, JavaScript и других языках.
+        - Разработка игр и приложений.
+        - Основы математики и логики.
+        - Создание веб-сайтов и мобильных приложений.
+        - Изучение искусственного интеллекта и анализа данных.
+
+        📞 **Контактные данные:**
+        - Телефон: +7 (800) 555-35-35
+        - Email: info@algoritmika.org
+        - Веб-сайт: [algoritmika.org](https://algoritmika.org)
+        - Адрес: Москва, ул. Ленина, д. 42 (главный офис)
+
+        📍 Мы работаем в более чем 20 странах мира!
+
+        Присоединяйтесь к нам и откройте для вашего ребёнка мир программирования и математики!
+        Чтобы записаться на пробное занятие, используйте команду /start """)
+    update.message.reply_text(message, parse_mode="Markdown")
+
 
 def view_trials(update: Update, context: CallbackContext):
     """Показывает все записи на пробные занятия."""
     if update.message.chat_id not in get_admin_ids():
-        update.message.reply_text("У вас нет прав для выполнения этой команды.")
+        update.message.reply_text(
+            "У вас нет прав для выполнения этой команды.")
         return
 
     conn = get_connection()
@@ -580,7 +657,8 @@ def view_trials(update: Update, context: CallbackContext):
     conn.close()
 
     if not trials:
-        update.message.reply_text("На данный момент записей на пробные занятия нет.")
+        update.message.reply_text(
+            "На данный момент записей на пробные занятия нет.")
         return
 
     trials_list = []
@@ -595,14 +673,14 @@ def view_trials(update: Update, context: CallbackContext):
             f"🏫 Адрес: {trial[6]}\n"
             f"📅 Дата записи: {trial[7].strftime('%d.%m.%Y %H:%M')}\n"
             f"✅ Статус: {'Подтверждено' if trial[8] else 'Не подтверждено'}\n"
-            f"{'=' * 30}"
-        )
+            f"{'=' * 30}")
         trials_list.append(trial_info)
 
     # Разбиваем на сообщения, если превышен лимит
     message = "📋 Записи на пробные занятия:\n\n"
     for trial in trials_list:
-        if len(message + trial) > 4096:  # Максимальная длина сообщения в Telegram
+        if len(message +
+               trial) > 4096:  # Максимальная длина сообщения в Telegram
             update.message.reply_text(message)
             message = trial
         else:
@@ -611,23 +689,28 @@ def view_trials(update: Update, context: CallbackContext):
     if message:
         update.message.reply_text(message)
 
+
 def add_admin_command(update: Update, context: CallbackContext):
     """Добавляет администратора."""
     if update.message.chat_id not in get_admin_ids():
-        update.message.reply_text("У вас нет прав для выполнения этой команды.")
+        update.message.reply_text(
+            "У вас нет прав для выполнения этой команды.")
         return
 
     try:
         admin_chat_id = int(context.args[0])
         add_admin(admin_chat_id)
-        update.message.reply_text(f"Администратор {admin_chat_id} успешно добавлен.")
+        update.message.reply_text(
+            f"Администратор {admin_chat_id} успешно добавлен.")
     except (IndexError, ValueError):
         update.message.reply_text("Использование: /add_admin <chat_id>")
+
 
 def confirm_trial(update: Update, context: CallbackContext):
     """Подтверждает или отклоняет запись на пробное занятие."""
     if update.message.chat_id not in get_admin_ids():
-        update.message.reply_text("У вас нет прав для выполнения этой команды.")
+        update.message.reply_text(
+            "У вас нет прав для выполнения этой команды.")
         return
 
     try:
@@ -636,7 +719,8 @@ def confirm_trial(update: Update, context: CallbackContext):
         cursor = conn.cursor()
 
         # Получаем информацию о записи
-        cursor.execute('''
+        cursor.execute(
+            '''
             SELECT 
                 trial_lessons.id,
                 users.child_name,
@@ -651,7 +735,7 @@ def confirm_trial(update: Update, context: CallbackContext):
             JOIN courses ON trial_lessons.course_id = courses.id
             JOIN locations ON trial_lessons.location_id = locations.id
             WHERE trial_lessons.id = %s
-        ''', (trial_id,))
+        ''', (trial_id, ))
         trial = cursor.fetchone()
         conn.close()
 
@@ -660,12 +744,13 @@ def confirm_trial(update: Update, context: CallbackContext):
             return
 
         # Создаем клавиатуру с кнопками подтверждения/отклонения
-        keyboard = [
-            [
-                InlineKeyboardButton("✅ Подтвердить", callback_data=f"confirm_trial_{trial_id}_yes"),
-                InlineKeyboardButton("❌ Отклонить", callback_data=f"confirm_trial_{trial_id}_no")
-            ]
-        ]
+        keyboard = [[
+            InlineKeyboardButton(
+                "✅ Подтвердить",
+                callback_data=f"confirm_trial_{trial_id}_yes"),
+            InlineKeyboardButton("❌ Отклонить",
+                                 callback_data=f"confirm_trial_{trial_id}_no")
+        ]]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         # Формируем сообщение с информацией о записи
@@ -678,13 +763,13 @@ def confirm_trial(update: Update, context: CallbackContext):
             f"📅 Дата записи: {trial[5].strftime('%d.%m.%Y %H:%M')}\n"
             f"📍 Адрес: {trial[7]}\n"
             f"✅ Статус: {'Подтверждено' if trial[6] else 'Не подтверждено'}\n\n"
-            f"Выберите действие:"
-        )
+            f"Выберите действие:")
 
         update.message.reply_text(message, reply_markup=reply_markup)
 
     except (IndexError, ValueError):
         update.message.reply_text("Использование: /confirm_trial <ID записи>")
+
 
 def handle_confirm_trial(update: Update, context: CallbackContext) -> int:
     """Обработчик подтверждения/отклонения записи."""
@@ -703,7 +788,8 @@ def handle_confirm_trial(update: Update, context: CallbackContext) -> int:
     cursor = conn.cursor()
 
     # Обновляем статус записи
-    cursor.execute('''
+    cursor.execute(
+        '''
         UPDATE trial_lessons 
         SET confirmed = %s 
         WHERE id = %s
@@ -724,24 +810,28 @@ def handle_confirm_trial(update: Update, context: CallbackContext) -> int:
 
         # Здесь можно добавить отправку уведомления пользователю
         if action == "yes":
-            notify_admins(context, f"Запись на курс '{result[2]}' {status} в '{result[3]}'.\nТелефон для связи: {result[1]}")
+            notify_admins(
+                context,
+                f"Запись на курс '{result[2]}' {status} в '{result[3]}'.\nТелефон для связи: {result[1]}"
+            )
     else:
         if query:
             query.edit_message_text("❌ Ошибка при обновлении записи.")
 
     return ConversationHandler.END
 
+
 def get_confirm_trial_handler():
     """Возвращает обработчик подтверждения записи."""
-    return CallbackQueryHandler(
-        handle_confirm_trial,
-        pattern="^confirm_trial_[0-9]+_(yes|no)$"
-    )
+    return CallbackQueryHandler(handle_confirm_trial,
+                                pattern="^confirm_trial_[0-9]+_(yes|no)$")
+
 
 def filter_trials(update: Update, context: CallbackContext):
     """Фильтрация записей на пробные занятия."""
     if update.message.chat_id not in get_admin_ids():
-        update.message.reply_text("У вас нет прав для выполнения этой команды.")
+        update.message.reply_text(
+            "У вас нет прав для выполнения этой команды.")
         return
 
     conn = get_connection()
@@ -768,22 +858,22 @@ def filter_trials(update: Update, context: CallbackContext):
     conn.close()
 
     if not trials:
-        update.message.reply_text("На данный момент нет неподтвержденных записей на пробные занятия.")
+        update.message.reply_text(
+            "На данный момент нет неподтвержденных записей на пробные занятия."
+        )
         return
 
     trials_list = []
     for trial in trials:
-        trial_info = (
-            f"🔖 ID записи: {trial[0]}\n"
-            f"👶 Ребенок: {trial[1]}\n"
-            f"👤 Родитель: {trial[2]}\n"
-            f"📱 Телефон: {trial[3]}\n"
-            f"📚 Курс: {trial[4]}\n"
-            f"📍 Район: {trial[5]}\n"
-            f"🏫 Адрес: {trial[6]}\n"
-            f"📅 Дата записи: {trial[7].strftime('%d.%m.%Y %H:%M')}\n"
-            f"{'=' * 30}"
-        )
+        trial_info = (f"🔖 ID записи: {trial[0]}\n"
+                      f"👶 Ребенок: {trial[1]}\n"
+                      f"👤 Родитель: {trial[2]}\n"
+                      f"📱 Телефон: {trial[3]}\n"
+                      f"📚 Курс: {trial[4]}\n"
+                      f"📍 Район: {trial[5]}\n"
+                      f"🏫 Адрес: {trial[6]}\n"
+                      f"📅 Дата записи: {trial[7].strftime('%d.%m.%Y %H:%M')}\n"
+                      f"{'=' * 30}")
         trials_list.append(trial_info)
 
     message = "📋 Неподтвержденные записи на пробные занятия:\n\n"
@@ -797,10 +887,12 @@ def filter_trials(update: Update, context: CallbackContext):
     if message:
         update.message.reply_text(message)
 
+
 def delete_course(update: Update, context: CallbackContext):
     """Удаляет курс."""
     if update.message.chat_id not in get_admin_ids():
-        update.message.reply_text("У вас нет прав для выполнения этой команды.")
+        update.message.reply_text(
+            "У вас нет прав для выполнения этой команды.")
         return
 
     try:
@@ -809,7 +901,7 @@ def delete_course(update: Update, context: CallbackContext):
         cursor = conn.cursor()
 
         # Проверяем существование курса
-        cursor.execute('SELECT name FROM courses WHERE id = %s', (course_id,))
+        cursor.execute('SELECT name FROM courses WHERE id = %s', (course_id, ))
         course = cursor.fetchone()
 
         if not course:
@@ -818,10 +910,11 @@ def delete_course(update: Update, context: CallbackContext):
             return
 
         # Удаляем связанные теги
-        cursor.execute('DELETE FROM course_tags WHERE course_id = %s', (course_id,))
+        cursor.execute('DELETE FROM course_tags WHERE course_id = %s',
+                       (course_id, ))
 
         # Удаляем сам курс
-        cursor.execute('DELETE FROM courses WHERE id = %s', (course_id,))
+        cursor.execute('DELETE FROM courses WHERE id = %s', (course_id, ))
         conn.commit()
         conn.close()
 
@@ -829,23 +922,24 @@ def delete_course(update: Update, context: CallbackContext):
     except (IndexError, ValueError):
         update.message.reply_text("Использование: /delete_course <ID курса>")
 
+
 def clear_trials(update: Update, context: CallbackContext):
     """Очищает все неподтвержденные записи на пробные занятия."""
     if update.message.chat_id not in get_admin_ids():
-        update.message.reply_text("У вас нет прав для выполнения этой команды.")
+        update.message.reply_text(
+            "У вас нет прав для выполнения этой команды.")
         return
 
     # Запрашиваем подтверждение
-    keyboard = [
-        [InlineKeyboardButton("Да ✅", callback_data="clear_trials_confirm")],
-        [InlineKeyboardButton("Нет ❌", callback_data="clear_trials_cancel")]
-    ]
+    keyboard = [[
+        InlineKeyboardButton("Да ✅", callback_data="clear_trials_confirm")
+    ], [InlineKeyboardButton("Нет ❌", callback_data="clear_trials_cancel")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     update.message.reply_text(
         "⚠️ Вы уверены, что хотите удалить все неподтвержденные записи на пробные занятия?",
-        reply_markup=reply_markup
-    )
+        reply_markup=reply_markup)
+
 
 def handle_clear_trials(update: Update, context: CallbackContext):
     query = update.callback_query
@@ -861,45 +955,68 @@ def handle_clear_trials(update: Update, context: CallbackContext):
         conn.close()
 
         if query:
-            query.edit_message_text(f"✅ Удалено {deleted_count} неподтвержденных записей.")
+            query.edit_message_text(
+                f"✅ Удалено {deleted_count} неподтвержденных записей.")
     elif query:
         query.edit_message_text("❌ Операция отменена.")
 
+
 def get_clear_trials_handler():
-    return CallbackQueryHandler(handle_clear_trials, pattern="^clear_trials_confirm$|^clear_trials_cancel$")
+    return CallbackQueryHandler(
+        handle_clear_trials,
+        pattern="^clear_trials_confirm$|^clear_trials_cancel$")
+
 
 # Состояния для ConversationHandler редактирования курса
+
 
 def get_edit_course_handler():
     """Возвращает обработчик для редактирования курса."""
     return ConversationHandler(
         entry_points=[CommandHandler('edit_course', start_edit_course)],
         states={
-            EDIT_COURSE_ID: [MessageHandler(Filters.text & ~Filters.command, get_course_id_to_edit)],
+            EDIT_COURSE_ID: [
+                MessageHandler(Filters.text & ~Filters.command,
+                               get_course_id_to_edit)
+            ],
             EDIT_COURSE_NAME: [
-                CommandHandler('skip', lambda u, c: get_course_name_to_edit(u, c, skip=True)),
-                MessageHandler(Filters.text & ~Filters.command, get_course_name_to_edit)
+                CommandHandler(
+                    'skip',
+                    lambda u, c: get_course_name_to_edit(u, c, skip=True)),
+                MessageHandler(Filters.text & ~Filters.command,
+                               get_course_name_to_edit)
             ],
             EDIT_COURSE_DESCRIPTION: [
-                CommandHandler('skip', lambda u, c: get_course_description_to_edit(u, c, skip=True)),
-                MessageHandler(Filters.text & ~Filters.command, get_course_description_to_edit)
+                CommandHandler(
+                    'skip', lambda u, c: get_course_description_to_edit(
+                        u, c, skip=True)),
+                MessageHandler(Filters.text & ~Filters.command,
+                               get_course_description_to_edit)
             ],
             EDIT_COURSE_MIN_AGE: [
-                CommandHandler('skip', lambda u, c: get_course_min_age_to_edit(u, c, skip=True)),
-                MessageHandler(Filters.text & ~Filters.command, get_course_min_age_to_edit)
+                CommandHandler(
+                    'skip',
+                    lambda u, c: get_course_min_age_to_edit(u, c, skip=True)),
+                MessageHandler(Filters.text & ~Filters.command,
+                               get_course_min_age_to_edit)
             ],
             EDIT_COURSE_MAX_AGE: [
-                CommandHandler('skip', lambda u, c: get_course_max_age_to_edit(u, c, skip=True)),
-                MessageHandler(Filters.text & ~Filters.command, get_course_max_age_to_edit)
+                CommandHandler(
+                    'skip',
+                    lambda u, c: get_course_max_age_to_edit(u, c, skip=True)),
+                MessageHandler(Filters.text & ~Filters.command,
+                               get_course_max_age_to_edit)
             ],
         },
         fallbacks=[CommandHandler('cancel', cancel)],
     )
 
+
 def start_edit_course(update: Update, context: CallbackContext) -> int:
     """Начинает процесс редактирования курса."""
     if update.message.chat_id not in get_admin_ids():
-        update.message.reply_text("У вас нет прав для выполнения этой команды.")
+        update.message.reply_text(
+            "У вас нет прав для выполнения этой команды.")
         return ConversationHandler.END
 
     conn = get_connection()
@@ -912,12 +1029,13 @@ def start_edit_course(update: Update, context: CallbackContext) -> int:
         update.message.reply_text("Нет доступных курсов для редактирования.")
         return ConversationHandler.END
 
-    courses_list = "\n".join([f"ID: {course[0]} - {course[1]}" for course in courses])
+    courses_list = "\n".join(
+        [f"ID: {course[0]} - {course[1]}" for course in courses])
     update.message.reply_text(
         f"Доступные курсы:\n\n{courses_list}\n\n"
-        "Введите ID курса, который хотите отредактировать:"
-    )
+        "Введите ID курса, который хотите отредактировать:")
     return EDIT_COURSE_ID
+
 
 def get_course_id_to_edit(update: Update, context: CallbackContext) -> int:
     """Получает ID курса для редактирования."""
@@ -925,12 +1043,13 @@ def get_course_id_to_edit(update: Update, context: CallbackContext) -> int:
         course_id = int(update.message.text)
         conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute('SELECT * FROM courses WHERE id = %s', (course_id,))
+        cursor.execute('SELECT * FROM courses WHERE id = %s', (course_id, ))
         course = cursor.fetchone()
         conn.close()
 
         if not course:
-            update.message.reply_text("Курс с таким ID не найден. Попробуйте снова.")
+            update.message.reply_text(
+                "Курс с таким ID не найден. Попробуйте снова.")
             return EDIT_COURSE_ID
 
         if context and hasattr(context, 'user_data'):
@@ -945,7 +1064,10 @@ def get_course_id_to_edit(update: Update, context: CallbackContext) -> int:
         update.message.reply_text("Пожалуйста, введите число.")
         return EDIT_COURSE_ID
 
-def get_course_name_to_edit(update: Update, context: CallbackContext, skip=False) -> int:
+
+def get_course_name_to_edit(update: Update,
+                            context: CallbackContext,
+                            skip=False) -> int:
     """Получаетновое название курса."""
     if skip:
         current_course = context.user_data.get('current_course')
@@ -956,11 +1078,13 @@ def get_course_name_to_edit(update: Update, context: CallbackContext, skip=False
 
     update.message.reply_text(
         f"Текущее описание курса: {context.user_data.get('current_course', [None])[2]}\n"
-        "Введите новое описание курса (или /skip, чтобы оставить текущее):"
-    )
+        "Введите новое описание курса (или /skip, чтобы оставить текущее):")
     return EDIT_COURSE_DESCRIPTION
 
-def get_course_description_to_edit(update: Update, context: CallbackContext, skip=False) -> int:
+
+def get_course_description_to_edit(update: Update,
+                                   context: CallbackContext,
+                                   skip=False) -> int:
     """Получает новое описание курса."""
     if skip:
         current_course = context.user_data.get('current_course', [None])
@@ -975,7 +1099,10 @@ def get_course_description_to_edit(update: Update, context: CallbackContext, ski
     )
     return EDIT_COURSE_MIN_AGE
 
-def get_course_min_age_to_edit(update: Update, context: CallbackContext, skip=False) -> int:
+
+def get_course_min_age_to_edit(update: Update,
+                               context: CallbackContext,
+                               skip=False) -> int:
     """Получает новый минимальный возраст."""
     if skip:
         current_course = context.user_data.get('current_course', [None])
@@ -985,7 +1112,9 @@ def get_course_min_age_to_edit(update: Update, context: CallbackContext, skip=Fa
         try:
             min_age = int(update.message.text)
             if min_age < 0:
-                update.message.reply_text("Возраст должен быть положительным числом. Попробуйте снова.")
+                update.message.reply_text(
+                    "Возраст должен быть положительным числом. Попробуйте снова."
+                )
                 return EDIT_COURSE_MIN_AGE
             context.user_data['course_min_age'] = min_age
         except ValueError:
@@ -998,7 +1127,10 @@ def get_course_min_age_to_edit(update: Update, context: CallbackContext, skip=Fa
     )
     return EDIT_COURSE_MAX_AGE
 
-def get_course_max_age_to_edit(update: Update, context: CallbackContext, skip=False) -> int:
+
+def get_course_max_age_to_edit(update: Update,
+                               context: CallbackContext,
+                               skip=False) -> int:
     """Получает новый максимальный возраст и сохраняет изменения."""
     if skip:
         current_course = context.user_data.get('current_course', [None])
@@ -1009,7 +1141,9 @@ def get_course_max_age_to_edit(update: Update, context: CallbackContext, skip=Fa
             max_age = int(update.message.text)
             min_age = context.user_data.get('course_min_age')
             if max_age is not None and min_age is not None and max_age <= min_age:
-                update.message.reply_text("Максимальный возраст должен быть больше минимального. Попробуйте снова.")
+                update.message.reply_text(
+                    "Максимальный возраст должен быть больше минимального. Попробуйте снова."
+                )
                 return EDIT_COURSE_MAX_AGE
             context.user_data['course_max_age'] = max_age
         except ValueError:
@@ -1020,17 +1154,16 @@ def get_course_max_age_to_edit(update: Update, context: CallbackContext, skip=Fa
     conn = get_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute('''
+        cursor.execute(
+            '''
             UPDATE courses 
             SET name = %s, description = %s, min_age = %s, max_age =%s 
             WHERE id = %s
-        ''', (
-            context.user_data['course_name'],
-            context.user_data['course_description'],
-            context.user_data['course_min_age'],
-            context.user_data['course_max_age'],
-            context.user_data['course_id']
-        ))
+        ''', (context.user_data['course_name'],
+              context.user_data['course_description'],
+              context.user_data['course_min_age'],
+              context.user_data['course_max_age'],
+              context.user_data['course_id']))
         conn.commit()
         update.message.reply_text(f"✅ Курс успешно обновлен!")
     except psycopg2.Error as e:
@@ -1041,51 +1174,57 @@ def get_course_max_age_to_edit(update: Update, context: CallbackContext, skip=Fa
     clear_user_data(context)
     return ConversationHandler.END
 
-def edit_course(update:Update, context:CallbackContext):
+
+def edit_course(update: Update, context: CallbackContext):
     pass
 
-def create_course(update:Update, context:CallbackContext):
+
+def create_course(update: Update, context: CallbackContext):
     pass
+
 
 def add_location(update: Update, context: CallbackContext):
     """Добавляет новый адрес школы."""
     if update.message.chat_id not in get_admin_ids():
-        update.message.reply_text("У вас нет прав для выполнения этой команды.")
+        update.message.reply_text(
+            "У вас нет прав для выполнения этой команды.")
         return
 
     try:
         # Expecting format: /add_location <district> | <address>
         location_data = " ".join(context.args)
         if "|" not in location_data:
-            update.message.reply_text("Использование: /add_location <район> | <адрес>")
+            update.message.reply_text(
+                "Использование: /add_location <район> | <адрес>")
             return
 
-        district, address = [part.strip() for part in location_data.split("|", 1)]
+        district, address = [
+            part.strip() for part in location_data.split("|", 1)
+        ]
 
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute(
             'INSERT INTO locations (district, address) VALUES (%s, %s) RETURNING id',
-            (district, address)
-        )
+            (district, address))
         location_id = cursor.fetchone()[0]
         conn.commit()
         conn.close()
 
-        update.message.reply_text(
-            f"✅ Адрес успешно добавлен!\n"
-            f"ID: {location_id}\n"
-            f"Район: {district}\n"
-            f"Адрес: {address}"
-        )
+        update.message.reply_text(f"✅ Адрес успешно добавлен!\n"
+                                  f"ID: {location_id}\n"
+                                  f"Район: {district}\n"
+                                  f"Адрес: {address}")
     except Exception as e:
         update.message.reply_text(f"❌ Ошибка при добавлении адреса: {str(e)}")
+
 
 def list_locations(update: Update, context: CallbackContext):
     """Показывает список всех адресов школы."""
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute('SELECT id, district, address FROM locations ORDER BY district')
+    cursor.execute(
+        'SELECT id, district, address FROM locations ORDER BY district')
     locations = cursor.fetchall()
     conn.close()
 
@@ -1104,10 +1243,12 @@ def list_locations(update: Update, context: CallbackContext):
 
     update.message.reply_text(message)
 
+
 def delete_location(update: Update, context: CallbackContext):
     """Удаляет адрес школы."""
     if update.message.chat_id not in get_admin_ids():
-        update.message.reply_text("У вас нет прав для выполнения этой команды.")
+        update.message.reply_text(
+            "У вас нет прав для выполнения этой команды.")
         return
 
     try:
@@ -1116,7 +1257,8 @@ def delete_location(update: Update, context: CallbackContext):
         cursor = conn.cursor()
 
         # Get location info before deletion
-        cursor.execute('SELECT district, address FROM locations WHERE id = %s', (location_id,))
+        cursor.execute('SELECT district, address FROM locations WHERE id = %s',
+                       (location_id, ))
         location = cursor.fetchone()
 
         if not location:
@@ -1124,17 +1266,16 @@ def delete_location(update: Update, context: CallbackContext):
             conn.close()
             return
 
-        cursor.execute('DELETE FROM locations WHERE id = %s', (location_id,))
+        cursor.execute('DELETE FROM locations WHERE id = %s', (location_id, ))
         conn.commit()
         conn.close()
 
-        update.message.reply_text(
-            f"✅ Адрес успешно удален!\n"
-            f"Район: {location[0]}\n"
-            f"Адрес: {location[1]}"
-        )
+        update.message.reply_text(f"✅ Адрес успешно удален!\n"
+                                  f"Район: {location[0]}\n"
+                                  f"Адрес: {location[1]}")
     except (IndexError, ValueError):
         update.message.reply_text("Использование: /delete_location <ID>")
+
 
 def get_all_handlers():
     return [
