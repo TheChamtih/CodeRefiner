@@ -18,7 +18,8 @@ from handlers import (
     delete_location,
     confirm_trial,
     get_confirm_trial_handler,
-    add_tags_command
+    add_tags_command, 
+    list_courses_admin
 )
 from database import init_db
 from config import BOT_TOKEN
