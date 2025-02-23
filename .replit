@@ -13,25 +13,7 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "Database Init"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
 args = "Telegram Bot"
-
-[[workflows.workflow]]
-name = "Database Init"
-author = "agent"
-
-[workflows.workflow.metadata]
-agentRequireRestartOnSave = false
-
-[[workflows.workflow.tasks]]
-task = "packager.installForAll"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "python3 -c 'from database.models import init_db; from database.operations import add_test_locations; init_db(); add_test_locations()'"
 
 [[workflows.workflow]]
 name = "Telegram Bot"
@@ -45,7 +27,7 @@ task = "packager.installForAll"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "python3 -c 'from database import init_db; init_db()' && python bot.py"
+args = "python bot.py"
 
 [deployment]
 run = ["sh", "-c", "python bot.py"]

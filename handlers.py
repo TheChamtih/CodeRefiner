@@ -412,21 +412,71 @@ def confirm_trial(update: Update, context: CallbackContext):
         return
 
     try:
+        # Проверяем, передан ли ID записи
+        if not context.args:
+            # Если ID не передан, показываем список всех неподтвержденных записей
+            conn = get_connection()
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT 
+                    trial_lessons.id,
+                    users.child_name,
+                    users.parent_name,
+                    users.phone,
+                    courses.name,
+                    locations.district,
+                    locations.address,
+                    trial_lessons.date
+                FROM trial_lessons
+                JOIN users ON trial_lessons.user_id = users.id
+                JOIN courses ON trial_lessons.course_id = courses.id
+                JOIN locations ON trial_lessons.location_id = locations.id
+                WHERE trial_lessons.confirmed = FALSE
+            ''')
+            trials = cursor.fetchall()
+            conn.close()
+
+            if not trials:
+                update.message.reply_text("Нет неподтвержденных записей на пробные занятия.")
+                return
+
+            message = "Неподтвержденные записи на пробные занятия:\n\n"
+            for trial in trials:
+                message += (
+                    f"🔖 ID: {trial[0]}\n"
+                    f"👶 Ребенок: {trial[1]}\n"
+                    f"👤 Родитель: {trial[2]}\n"
+                    f"📱 Телефон: {trial[3]}\n"
+                    f"📚 Курс: {trial[4]}\n"
+                    f"📍 Район: {trial[5]}\n"
+                    f"🏢 Адрес: {trial[6]}\n"
+                    f"📅 Дата записи: {trial[7].strftime('%d.%m.%Y %H:%M')}\n"
+                    f"{'=' * 30}\n"
+                )
+
+            update.message.reply_text(
+                message + "\n\nДля подтверждения записи используйте:\n/confirm_trial <ID записи>"
+            )
+            return
+
+        # Если ID передан, показываем информацию о конкретной записи
         trial_id = int(context.args[0])
         conn = get_connection()
         cursor = conn.cursor()
 
+        # Получаем информацию о записи
         cursor.execute('''
             SELECT 
                 trial_lessons.id,
                 users.child_name,
                 users.parent_name,
                 users.phone,
-                courses.name as course_name,
+                courses.name,
                 locations.district,
                 locations.address,
                 trial_lessons.date,
-                trial_lessons.confirmed
+                trial_lessons.confirmed,
+                users.chat_id
             FROM trial_lessons
             JOIN users ON trial_lessons.user_id = users.id
             JOIN courses ON trial_lessons.course_id = courses.id
@@ -441,12 +491,10 @@ def confirm_trial(update: Update, context: CallbackContext):
             update.message.reply_text("Запись с таким ID не найдена.")
             return
 
-        keyboard = [
-            [InlineKeyboardButton("✅ Подтвердить", callback_data=f"confirm_{trial_id}_yes")],
-            [InlineKeyboardButton("❌ Отменить", callback_data=f"confirm_{trial_id}_no")],
-            [InlineKeyboardButton("🔙 Назад", callback_data="exit")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
+        formatted_date = trial[7].strftime("%d.%m.%Y %H:%M")
+
+        # Сохраняем chat_id пользователя в контексте для последующего уведомления
+        context.user_data['user_chat_id'] = trial[9]
 
         message = (
             f"Запись на пробное занятие:\n\n"
@@ -456,13 +504,22 @@ def confirm_trial(update: Update, context: CallbackContext):
             f"📚 Курс: {trial[4]}\n"
             f"📍 Район: {trial[5]}\n"
             f"🏢 Адрес: {trial[6]}\n"
-            f"📅 Дата записи: {trial[7].strftime('%d.%m.%Y %H:%M')}\n"
+            f"📅 Дата записи: {formatted_date}\n"
             f"✅ Статус: {'Подтверждено' if trial[8] else 'Не подтверждено'}"
         )
 
+        keyboard = [
+            [InlineKeyboardButton("✅ Подтвердить", callback_data=f"confirm_trial_{trial_id}_yes")],
+            [InlineKeyboardButton("❌ Отменить", callback_data=f"confirm_trial_{trial_id}_no")],
+            [InlineKeyboardButton("🔙 Назад", callback_data="exit")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
         update.message.reply_text(message, reply_markup=reply_markup)
-    except (IndexError, ValueError):
-        update.message.reply_text("Использование: /confirm_trial <ID>")
+
+    except (IndexError, ValueError) as e:
+        update.message.reply_text(f"Ошибка: {str(e)}\nИспользование: /confirm_trial [ID записи]")
+        return
 
 def handle_confirm_trial(update: Update, context: CallbackContext) -> int:
     """Обработчик подтверждения записи на пробное занятие."""
@@ -474,12 +531,16 @@ def handle_confirm_trial(update: Update, context: CallbackContext) -> int:
         return ConversationHandler.END
 
     try:
-        data_parts = query.data.split("_")
-        if len(data_parts) != 3 or data_parts[0] != "confirm":
+        # Проверяем формат callback_data
+        if not query.data.startswith("confirm_trial_"):
             raise ValueError("Неверный формат callback_data")
 
-        trial_id = int(data_parts[1])
-        action = data_parts[2]
+        data_parts = query.data.split("_")
+        if len(data_parts) != 4:  # confirm_trial_id_action
+            raise ValueError("Неверный формат callback_data")
+
+        trial_id = int(data_parts[2])
+        action = data_parts[3]
 
         conn = get_connection()
         cursor = conn.cursor()
@@ -510,14 +571,13 @@ def handle_confirm_trial(update: Update, context: CallbackContext) -> int:
                 if trial_info:
                     # Отправляем уведомление пользователю
                     try:
-                        formatted_date = trial_info[5].strftime("%d.%m.%Y %H:%M")
                         user_message = (
                             f"✅ Ваша запись на пробное занятие подтверждена!\n\n"
                             f"👶 Ребенок: {trial_info[1]}\n"
                             f"📚 Курс: {trial_info[2]}\n"
                             f"📍 Район: {trial_info[3]}\n"
                             f"🏢 Адрес: {trial_info[4]}\n"
-                            f"📅 Дата записи: {formatted_date}"
+                            f"📅 Дата записи: {trial_info[5].strftime('%d.%m.%Y %H:%M')}"
                         )
                         context.bot.send_message(
                             chat_id=trial_info[0],
@@ -547,11 +607,10 @@ def get_confirm_trial_handler():
     return ConversationHandler(
         entry_points=[CommandHandler('confirm_trial', confirm_trial)],
         states={
-            0: [CallbackQueryHandler(handle_confirm_trial, pattern=r"^(confirm_\d+_(yes|no)|exit)$")],
+            0: [CallbackQueryHandler(handle_confirm_trial, pattern=r"^confirm_trial_\d+_(yes|no)$|^exit$")],
         },
         fallbacks=[CommandHandler('cancel', cancel)],
     )
-
 
 def filter_trials(update: Update, context: CallbackContext):
     """Показывает неподтвержденные записи на пробные занятия."""
@@ -755,7 +814,7 @@ def get_course_min_age_to_edit(update: Update, context: CallbackContext) -> int:
     if update.message.text == '/skip':
         context.user_data['new_min_age'] = context.user_data['current_course'][3]
         update.message.reply_text(
-            f"Текущий максимальный возраст: {context.user_data['current_course'][4]}\n"
+            f"Текущий максимальныйвозраст: {context.user_data['current_course'][4]}\n"
             "Введите новый максимальный возраст (или /skip, чтобы оставить текущий):"
         )
         return EDIT_COURSE_MAX_AGE
@@ -763,8 +822,9 @@ def get_course_min_age_to_edit(update: Update, context: CallbackContext) -> int:
     try:
         min_age = int(update.message.text)
         if min_age < 0:
-            update.message.reply_text("Возраст должен быть положительным числом. Попробуйте снова`.")
+            update.message.reply_text("Возраст должен быть положительным числом. Попробуйте снова.")
             return EDIT_COURSE_MIN_AGE
+
         context.user_data['new_min_age'] = min_age
         update.message.reply_text(
             f"Текущий максимальный возраст: {context.user_data['current_course'][4]}\n"
