@@ -51,6 +51,7 @@ def main():
     dispatcher.add_handler(CommandHandler('cancel', cancel))
     dispatcher.add_handler(CommandHandler('confirm_trial', confirm_trial))  # Добавляем команду подтверждения
     dispatcher.add_handler(CommandHandler('add_tags', add_tags_command))
+    dispatcher.add_handler(CommandHandler('list_courses_admin', list_courses_admin))
 
     # Новые команды
     dispatcher.add_handler(CommandHandler('clear_trials', clear_trials))

@@ -578,6 +578,7 @@ def help_command(update: Update, context: CallbackContext):
         /add_location - Добавить новый адрес школы
         /delete_location - Удалить адрес школы
         /add_tags - Добавить теги к курсу
+        /list_courses_admin - Список курсов с ID (только для администраторов)
         """
 
     update.message.reply_text(help_text)
@@ -1314,6 +1315,26 @@ def add_tags_command(update: Update, context: CallbackContext):
     except (IndexError, ValueError) as e:
         update.message.reply_text(f"❌ Ошибка при добавлении тегов: {str(e)}")
 
+def list_courses_admin(update: Update, context: CallbackContext):
+    """Выводит список курсов с ID для администраторов."""
+    if update.message.chat_id not in get_admin_ids():
+        update.message.reply_text("У вас нет прав для выполнения этой команды.")
+        return
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, name FROM courses")
+    courses = cursor.fetchall()
+    conn.close()
+
+    if not courses:
+        update.message.reply_text("Список курсов пуст.")
+        return
+
+    courses_list = "\n".join([f"ID: {course[0]}, Название: {course[1]}" for course in courses])
+    update.message.reply_text(f"Список курсов:\n\n{courses_list}")
+
+
 def get_all_handlers():
     return [
         get_conversation_handler(),
@@ -1332,5 +1353,6 @@ def get_all_handlers():
         CommandHandler('confirm_trial', confirm_trial),
         get_confirm_trial_handler(),
         CommandHandler('filter_trials', filter_trials),
-        CommandHandler('add_tags', add_tags_command)  # Добавлен новый обработчик
+        CommandHandler('add_tags', add_tags_command),  
+        CommandHandler('list_courses_admin', list_courses_admin)
     ]
