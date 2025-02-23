@@ -1316,14 +1316,20 @@ def add_tags_command(update: Update, context: CallbackContext):
         update.message.reply_text(f"❌ Ошибка при добавлении тегов: {str(e)}")
 
 def list_courses_admin(update: Update, context: CallbackContext):
-    """Выводит список курсов с ID для администраторов."""
+    """Выводит список курсов с ID и тегами для администраторов."""
     if update.message.chat_id not in get_admin_ids():
         update.message.reply_text("У вас нет прав для выполнения этой команды.")
         return
 
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, name FROM courses")
+    cursor.execute("""
+        SELECT c.id, c.name, STRING_AGG(ct.tag, ', ') as tags
+        FROM courses c
+        LEFT JOIN course_tags ct ON c.id = ct.course_id
+        GROUP BY c.id, c.name
+        ORDER BY c.id
+    """)
     courses = cursor.fetchall()
     conn.close()
 
@@ -1331,7 +1337,10 @@ def list_courses_admin(update: Update, context: CallbackContext):
         update.message.reply_text("Список курсов пуст.")
         return
 
-    courses_list = "\n".join([f"ID: {course[0]}, Название: {course[1]}" for course in courses])
+    courses_list = "\n\n".join([
+        f"ID: {course[0]}\nНазвание: {course[1]}\nТеги: {course[2] or 'нет тегов'}"
+        for course in courses
+    ])
     update.message.reply_text(f"Список курсов:\n\n{courses_list}")
 
 
