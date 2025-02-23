@@ -19,7 +19,8 @@ from handlers import (
     confirm_trial,
     get_confirm_trial_handler,
     add_tags_command, 
-    list_courses_admin
+    list_courses_admin, 
+    delete_tags_command
 )
 from database import init_db
 from config import BOT_TOKEN
