@@ -578,6 +578,7 @@ def help_command(update: Update, context: CallbackContext):
         /add_location - Добавить новый адрес школы
         /delete_location - Удалить адрес школы
         /add_tags - Добавить теги к курсу
+        /delete_tags - Удалить теги у курса
         /list_courses_admin - Список курсов с ID (только для администраторов)
         """
 
@@ -1278,6 +1279,45 @@ def delete_location(update: Update, context: CallbackContext):
     except (IndexError, ValueError):
         update.message.reply_text("Использование: /delete_location <ID>")
 
+def delete_tags_command(update: Update, context: CallbackContext):
+    """Удаляет теги у курса."""
+    if update.message.chat_id not in get_admin_ids():
+        update.message.reply_text("У вас нет прав для выполнения этой команды.")
+        return
+
+    try:
+        # Ожидаем формат: /delete_tags <course_id> <tag1> <tag2> ... <tagN>
+        args = context.args
+        if len(args) < 2:
+            update.message.reply_text("Использование: /delete_tags <ID курса> <тег1> <тег2> ... <тегN>")
+            return
+
+        course_id = int(args[0])
+        tags_to_delete = args[1:]
+
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        # Проверяем существование курса
+        cursor.execute('SELECT name FROM courses WHERE id = %s', (course_id,))
+        course = cursor.fetchone()
+
+        if not course:
+            update.message.reply_text("❌ Курс с таким ID не найден.")
+            conn.close()
+            return
+
+        # Удаляем указанные теги
+        cursor.execute('DELETE FROM course_tags WHERE course_id = %s AND tag = ANY(%s)',
+                      (course_id, tags_to_delete))
+        deleted_count = cursor.rowcount
+        conn.commit()
+        conn.close()
+
+        update.message.reply_text(f"✅ Удалено {deleted_count} тегов у курса '{course[0]}'.")
+    except (IndexError, ValueError) as e:
+        update.message.reply_text(f"❌ Ошибка при удалении тегов: {str(e)}")
+
 def add_tags_command(update: Update, context: CallbackContext):
     """Добавляет теги к курсу."""
     if update.message.chat_id not in get_admin_ids():
@@ -1362,6 +1402,7 @@ def get_all_handlers():
         CommandHandler('confirm_trial', confirm_trial),
         get_confirm_trial_handler(),
         CommandHandler('filter_trials', filter_trials),
-        CommandHandler('add_tags', add_tags_command),  
+        CommandHandler('add_tags', add_tags_command),
+        CommandHandler('delete_tags', delete_tags_command),
         CommandHandler('list_courses_admin', list_courses_admin)
     ]
