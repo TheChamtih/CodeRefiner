@@ -1,17 +1,12 @@
 from telegram.ext import Updater, CommandHandler, CallbackQueryHandler
 from handlers import (
     get_conversation_handler,
-    get_confirm_trial_handler,
-    get_create_course_handler,
     get_edit_course_handler,
     add_admin_command,
     list_courses,
     view_trials,
-    confirm_trial,
     help_command,
     delete_course,
-    clear_trials,
-    handle_clear_trials,
     about,
     filter_trials,
     cancel
@@ -33,9 +28,7 @@ def main():
 
     # Добавление обработчиков
     dispatcher.add_handler(get_conversation_handler())
-    dispatcher.add_handler(get_confirm_trial_handler())
     dispatcher.add_handler(get_edit_course_handler())
-    dispatcher.add_handler(get_create_course_handler())
 
     # Базовые команды
     dispatcher.add_handler(CommandHandler('add_admin', add_admin_command))
@@ -46,10 +39,6 @@ def main():
     dispatcher.add_handler(CommandHandler('about', about))
     dispatcher.add_handler(CommandHandler('filter_trials', filter_trials))
     dispatcher.add_handler(CommandHandler('cancel', cancel))
-
-    # Обработчики для очистки пробных занятий
-    dispatcher.add_handler(CommandHandler('clear_trials', clear_trials))
-    dispatcher.add_handler(CallbackQueryHandler(handle_clear_trials, pattern="^clear_trials_"))
 
     # Запуск бота
     updater.start_polling()
