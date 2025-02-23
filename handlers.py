@@ -45,16 +45,18 @@ def get_connection():
 
 
 def add_course_tags(cursor, course_id: int, tags: list):
-    """Добавляет или обновляет теги для курса."""
-    # Сначала удаляем существующие теги
-    cursor.execute('DELETE FROM course_tags WHERE course_id = %s',
-                   (course_id, ))
-
-    # Добавляем новые теги
+    """Добавляет теги для курса, сохраняя существующие."""
+    # Проверяем существующие теги
+    cursor.execute('SELECT tag FROM course_tags WHERE course_id = %s', (course_id,))
+    existing_tags = {row[0] for row in cursor.fetchall()}
+    
+    # Добавляем только новые теги
     for tag in tags:
-        cursor.execute(
-            'INSERT INTO course_tags (course_id, tag) VALUES (%s, %s)',
-            (course_id, tag.lower().strip()))
+        tag = tag.lower().strip()
+        if tag not in existing_tags:
+            cursor.execute(
+                'INSERT INTO course_tags (course_id, tag) VALUES (%s, %s)',
+                (course_id, tag))
 
 
 def update_course_recommendations():
