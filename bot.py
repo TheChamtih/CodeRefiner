@@ -17,7 +17,8 @@ from handlers import (
     list_locations,
     delete_location,
     confirm_trial,
-    get_confirm_trial_handler
+    get_confirm_trial_handler,
+    add_tags_command
 )
 from database import init_db
 from config import BOT_TOKEN
@@ -49,6 +50,7 @@ def main():
     dispatcher.add_handler(CommandHandler('filter_trials', filter_trials))
     dispatcher.add_handler(CommandHandler('cancel', cancel))
     dispatcher.add_handler(CommandHandler('confirm_trial', confirm_trial))  # Добавляем команду подтверждения
+    dispatcher.add_handler(CommandHandler('add_tags', add_tags_command))
 
     # Новые команды
     dispatcher.add_handler(CommandHandler('clear_trials', clear_trials))

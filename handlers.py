@@ -577,6 +577,7 @@ def help_command(update: Update, context: CallbackContext):
         /create_course - Создать новый курс
         /add_location - Добавить новый адрес школы
         /delete_location - Удалить адрес школы
+        /add_tags - Добавить теги к курсу
         """
 
     update.message.reply_text(help_text)
@@ -1276,6 +1277,42 @@ def delete_location(update: Update, context: CallbackContext):
     except (IndexError, ValueError):
         update.message.reply_text("Использование: /delete_location <ID>")
 
+def add_tags_command(update: Update, context: CallbackContext):
+    """Добавляет теги к курсу."""
+    if update.message.chat_id not in get_admin_ids():
+        update.message.reply_text("У вас нет прав для выполнения этой команды.")
+        return
+
+    try:
+        # Ожидаем формат: /add_tags <course_id> <tag1> <tag2> ... <tagN>
+        args = context.args
+        if len(args) < 2:
+            update.message.reply_text("Использование: /add_tags <ID курса> <тег1> <тег2> ... <тегN>")
+            return
+
+        course_id = int(args[0])
+        tags = args[1:]
+
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        # Проверяем существование курса
+        cursor.execute('SELECT name FROM courses WHERE id = %s', (course_id,))
+        course = cursor.fetchone()
+
+        if not course:
+            update.message.reply_text("❌ Курс с таким ID не найден.")
+            conn.close()
+            return
+
+        # Добавляем теги
+        add_course_tags(cursor, course_id, tags)
+        conn.commit()
+        conn.close()
+
+        update.message.reply_text(f"✅ Теги успешно добавлены к курсу '{course[0]}'.")
+    except (IndexError, ValueError) as e:
+        update.message.reply_text(f"❌ Ошибка при добавлении тегов: {str(e)}")
 
 def get_all_handlers():
     return [
@@ -1294,5 +1331,6 @@ def get_all_handlers():
         CommandHandler('delete_location', delete_location),
         CommandHandler('confirm_trial', confirm_trial),
         get_confirm_trial_handler(),
-        CommandHandler('filter_trials', filter_trials)
+        CommandHandler('filter_trials', filter_trials),
+        CommandHandler('add_tags', add_tags_command)  # Добавлен новый обработчик
     ]
