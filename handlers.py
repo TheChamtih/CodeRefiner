@@ -7,6 +7,38 @@ from datetime import datetime
 import psycopg2
 from psycopg2.extras import DictCursor
 import os
+from typing import List, Dict
+import math
+
+# Добавим новые функции для работы с рекомендациями
+def calculate_course_score(user_age: int, user_interests: str, course: Dict) -> float:
+    """Вычисляет релевантность курса для пользователя."""
+    # Базовый скор
+    score = 1.0
+
+    # Вес по возрасту (чем ближе к середине возрастного диапазона, тем лучше)
+    age_range_center = (course['min_age'] + course['max_age']) / 2
+    age_distance = abs(user_age - age_range_center)
+    age_score = 1.0 / (1 + age_distance)
+    score *= age_score
+
+    # Вес по интересам
+    user_interests_list = set(user_interests.lower().split())
+    course_tags = get_course_tags(course['id'])
+    matching_interests = len(user_interests_list.intersection(course_tags))
+    interest_score = 1.0 + (matching_interests * 0.5)
+    score *= interest_score
+
+    return score
+
+def get_course_tags(course_id: int) -> List[str]:
+    """Получает теги курса из базы данных."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT tag FROM course_tags WHERE course_id = %s', (course_id,))
+    tags = [row[0].lower() for row in cursor.fetchall()]
+    conn.close()
+    return tags
 
 # Состояния для ConversationHandler
 NAME, AGE, INTERESTS, PARENT_NAME, PHONE, COURSE_SELECTION, LOCATION_SELECTION, CONFIRMATION = range(8)
@@ -70,7 +102,6 @@ def get_parent_name(update: Update, context: CallbackContext) -> int:
     return PHONE
 
 def get_phone(update: Update, context: CallbackContext) -> int:
-    """Получение номера телефона."""
     phone = update.message.text
     if not is_valid_phone(phone):
         update.message.reply_text("Номер телефона должен начинаться на +7 или 8. Пожалуйста, введите корректный номер.")
@@ -78,26 +109,53 @@ def get_phone(update: Update, context: CallbackContext) -> int:
 
     context.user_data['phone'] = phone
 
-    # Подбираем курсы на основе возраста
+    # Получаем курсы, подходящие по возрасту
     child_age = context.user_data['child_age']
+    child_interests = context.user_data['child_interests'].lower()
+
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute('SELECT * FROM courses WHERE min_age <= %s AND max_age >= %s', (child_age, child_age))
-    age_appropriate_courses = cursor.fetchall()
+    cursor.execute('''
+        SELECT id, name, description, min_age, max_age 
+        FROM courses 
+        WHERE min_age <= %s AND max_age >= %s
+    ''', (child_age, child_age))
+    courses = cursor.fetchall()
     conn.close()
 
-    if not age_appropriate_courses:
+    if not courses:
         update.message.reply_text("К сожалению, для вашего возраста нет доступных курсов.")
         return ConversationHandler.END
 
-    keyboard = [
-        [InlineKeyboardButton(course[1], callback_data=f"course_{course[0]}")]
-        for course in age_appropriate_courses
-    ]
+    # Вычисляем релевантность каждого курса
+    scored_courses = []
+    for course in courses:
+        course_dict = {
+            'id': course[0],
+            'name': course[1],
+            'description': course[2],
+            'min_age': course[3],
+            'max_age': course[4]
+        }
+        score = calculate_course_score(child_age, child_interests, course_dict)
+        scored_courses.append((course, score))
+
+    # Сортируем курсы по релевантности
+    scored_courses.sort(key=lambda x: x[1], reverse=True)
+
+    # Создаем клавиатуру с курсами, начиная с самых релевантных
+    keyboard = []
+    for course, score in scored_courses:
+        button_text = f"📚 {course[1]}"
+        if score > 1.5:  # Если курс особенно релевантен
+            button_text = "⭐ " + button_text
+        keyboard.append([InlineKeyboardButton(button_text, callback_data=f"course_{course[0]}")])
+
     keyboard.append([InlineKeyboardButton("❌ Выйти", callback_data="exit")])
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    update.message.reply_text("Выберите курс, который вам интересен:", reply_markup=reply_markup)
+    recommendation_text = "На основе ваших интересов, мы подобрали следующие курсы:"
+    update.message.reply_text(recommendation_text, reply_markup=reply_markup)
     return COURSE_SELECTION
 
 def select_course(update: Update, context: CallbackContext) -> int:
@@ -112,23 +170,35 @@ def select_course(update: Update, context: CallbackContext) -> int:
     course_id = int(query.data.split("_")[1])
     context.user_data['selected_course'] = course_id
 
-    # После выбора курса переходим к подтверждению записи
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute('SELECT name, description FROM courses WHERE id = %s', (course_id,))
+    cursor.execute('''
+        SELECT c.name, c.description, c.min_age, c.max_age,
+               string_agg(ct.tag, ', ') as tags
+        FROM courses c
+        LEFT JOIN course_tags ct ON c.id = ct.course_id
+        WHERE c.id = %s
+        GROUP BY c.id, c.name, c.description, c.min_age, c.max_age
+    ''', (course_id,))
     course = cursor.fetchone()
     conn.close()
 
-    confirmation_text = (
-        f"Вы выбрали курс:\n"
-        f"{course[0]}\n"
-        f"{course[1]}\n\n"
-        f"Хотите записаться на пробное занятие?"
+    course_info = (
+        f"📚 Курс: {course[0]}\n\n"
+        f"📝 Описание: {course[1]}\n\n"
+        f"👶 Возраст: {course[2]}-{course[3]} лет\n"
+        f"🏷️ Теги: {course[4] if course[4] else 'не указаны'}\n\n"
+        "Хотите записаться на пробное занятие?"
     )
 
-    keyboard = [[InlineKeyboardButton("Да", callback_data="confirm_yes"),InlineKeyboardButton("Нет", callback_data="confirm_no")],[InlineKeyboardButton("❌ Выйти", callback_data="exit")]]
+    keyboard = [
+        [InlineKeyboardButton("Да ✅", callback_data="confirm_yes"),
+         InlineKeyboardButton("Нет ❌", callback_data="confirm_no")],
+        [InlineKeyboardButton("❌ Выйти", callback_data="exit")]
+    ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    query.edit_message_text(text=confirmation_text,reply_markup=reply_markup)
+
+    query.edit_message_text(text=course_info, reply_markup=reply_markup)
     return CONFIRMATION
 
 
@@ -167,8 +237,8 @@ def confirm_signup(update: Update, context: CallbackContext) -> int:
 
         # Записываем на пробное занятие
         cursor.execute('''
-            INSERT INTO trial_lessons (user_id, course_id, date)
-            VALUES (%s, %s, %s)
+            INSERT INTO trial_lessons (user_id, course_id, date, confirmed)
+            VALUES (%s, %s, %s, FALSE)
         ''', (user_id, context.user_data['selected_course'], datetime.now()))
 
         conn.commit()
@@ -232,6 +302,7 @@ def help_command(update: Update, context: CallbackContext):
     /help - Показать список всех команд
     /about - Информация о школе
     /cancel - Отменить текущий диалог
+    /list_locations - Показать список всех адресов школы
     """
 
     if user_id in admins:
@@ -242,9 +313,11 @@ def help_command(update: Update, context: CallbackContext):
         /edit_course - Редактировать курс
         /view_trials - Показать все записи на пробные занятия
         /filter_trials - Показать неподтвержденные записи
-        /clear_trials - Очистить все записи на пробные занятия
+        /clear_trials - Очистить все неподтвержденные записи
         /confirm_trial - Подтвердить запись на пробное занятие
         /create_course - Создать новый курс
+        /add_location - Добавить новый адрес школы
+        /delete_location - Удалить адрес школы
         """
 
     update.message.reply_text(help_text)
@@ -352,25 +425,226 @@ def add_admin_command(update: Update, context: CallbackContext):
         update.message.reply_text("Использование: /add_admin <chat_id>")
 
 def confirm_trial(update: Update, context: CallbackContext):
-    pass
+    """Подтверждает или отклоняет запись на пробное занятие."""
+    if update.message.chat_id not in get_admin_ids():
+        update.message.reply_text("У вас нет прав для выполнения этой команды.")
+        return
+
+    try:
+        trial_id = int(context.args[0])
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        # Получаем информацию о записи
+        cursor.execute('''
+            SELECT 
+                trial_lessons.id,
+                users.child_name,
+                users.parent_name,
+                users.phone,
+                courses.name as course_name,
+                trial_lessons.date,
+                trial_lessons.confirmed
+            FROM trial_lessons
+            JOIN users ON trial_lessons.user_id = users.id
+            JOIN courses ON trial_lessons.course_id = courses.id
+            WHERE trial_lessons.id = %s
+        ''', (trial_id,))
+        trial = cursor.fetchone()
+        conn.close()
+
+        if not trial:
+            update.message.reply_text("❌ Запись с таким ID не найдена.")
+            return
+
+        # Создаем клавиатуру с кнопками подтверждения/отклонения
+        keyboard = [
+            [
+                InlineKeyboardButton("✅ Подтвердить", callback_data=f"confirm_trial_{trial_id}_yes"),
+                InlineKeyboardButton("❌ Отклонить", callback_data=f"confirm_trial_{trial_id}_no")
+            ]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        # Формируем сообщение с информацией о записи
+        message = (
+            f"📝 Запись на пробное занятие:\n\n"
+            f"👶 Ребенок: {trial[1]}\n"
+            f"👤 Родитель: {trial[2]}\n"
+            f"📱 Телефон: {trial[3]}\n"
+            f"📚 Курс: {trial[4]}\n"
+            f"📅 Дата записи: {trial[5].strftime('%d.%m.%Y %H:%M')}\n"
+            f"✅ Статус: {'Подтверждено' if trial[6] else 'Не подтверждено'}\n\n"
+            f"Выберите действие:"
+        )
+
+        update.message.reply_text(message, reply_markup=reply_markup)
+
+    except (IndexError, ValueError):
+        update.message.reply_text("Использование: /confirm_trial <ID записи>")
 
 def handle_confirm_trial(update: Update, context: CallbackContext) -> int:
-    pass
+    """Обработчик подтверждения/отклонения записи."""
+    query = update.callback_query
+    query.answer()
+
+    if not query.data.startswith("confirm_trial_"):
+        return ConversationHandler.END
+
+    # Получаем ID записи и действие из callback_data
+    _, _, trial_id, action = query.data.split("_")
+    trial_id = int(trial_id)
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    # Обновляем статус записи
+    cursor.execute('''
+        UPDATE trial_lessons 
+        SET confirmed = %s 
+        WHERE id = %s
+        RETURNING id, 
+            (SELECT users.phone FROM users WHERE users.id = trial_lessons.user_id) as phone,
+            (SELECT courses.name FROM courses WHERE courses.id = trial_lessons.course_id) as course_name
+    ''', (action == "yes", trial_id))
+
+    result = cursor.fetchone()
+    conn.commit()
+    conn.close()
+
+    if result:
+        status = "✅ подтверждена" if action == "yes" else "❌ отклонена"
+        query.edit_message_text(f"Запись на пробное занятие {status}.")
+
+        # Здесь можно добавить отправку уведомления пользователю
+        if action == "yes":
+            notify_admins(context, f"Запись на курс '{result[2]}' подтверждена.\nТелефон для связи: {result[1]}")
+    else:
+        query.edit_message_text("❌ Ошибка при обновлении записи.")
+
+    return ConversationHandler.END
 
 def get_confirm_trial_handler():
-    pass
+    """Возвращает обработчик подтверждения записи."""
+    return CallbackQueryHandler(
+        handle_confirm_trial,
+        pattern="^confirm_trial_[0-9]+_(yes|no)$"
+    )
 
 def filter_trials(update: Update, context: CallbackContext):
-    pass
+    """Фильтрация записей на пробные занятия."""
+    if update.message.chat_id not in get_admin_ids():
+        update.message.reply_text("У вас нет прав для выполнения этой команды.")
+        return
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT trial_lessons.id, users.child_name, users.parent_name, users.phone, courses.name, trial_lessons.date, trial_lessons.confirmed
+        FROM trial_lessons
+        JOIN users ON trial_lessons.user_id = users.id
+        JOIN courses ON trial_lessons.course_id = courses.id
+        WHERE trial_lessons.confirmed = FALSE
+        ORDER BY trial_lessons.date DESC
+    ''')
+    trials = cursor.fetchall()
+    conn.close()
+
+    if not trials:
+        update.message.reply_text("На данный момент нет неподтвержденных записей на пробные занятия.")
+        return
+
+    trials_list = []
+    for trial in trials:
+        trial_info = (
+            f"🔖 ID записи: {trial[0]}\n"
+            f"👶 Ребенок: {trial[1]}\n"
+            f"👤 Родитель: {trial[2]}\n"
+            f"📱 Телефон: {trial[3]}\n"
+            f"📚 Курс: {trial[4]}\n"
+            f"📅 Дата записи: {trial[5].strftime('%d.%m.%Y %H:%M')}\n"
+            f"{'=' * 30}"
+        )
+        trials_list.append(trial_info)
+
+    message = "📋 Неподтвержденные записи на пробные занятия:\n\n"
+    for trial in trials_list:
+        if len(message + trial) > 4096:  # Максимальная длина сообщения в Telegram
+            update.message.reply_text(message)
+            message = trial
+        else:
+            message += trial + "\n"
+
+    if message:
+        update.message.reply_text(message)
 
 def delete_course(update: Update, context: CallbackContext):
-    pass
+    """Удаляет курс."""
+    if update.message.chat_id not in get_admin_ids():
+        update.message.reply_text("У вас нет прав для выполнения этой команды.")
+        return
+
+    try:
+        course_id = int(context.args[0])
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        # Проверяем существование курса
+        cursor.execute('SELECT name FROM courses WHERE id = %s', (course_id,))
+        course = cursor.fetchone()
+
+        if not course:
+            update.message.reply_text("❌ Курс с таким ID не найден.")
+            conn.close()
+            return
+
+        # Удаляем связанные теги
+        cursor.execute('DELETE FROM course_tags WHERE course_id = %s', (course_id,))
+
+        # Удаляем сам курс
+        cursor.execute('DELETE FROM courses WHERE id = %s', (course_id,))
+        conn.commit()
+        conn.close()
+
+        update.message.reply_text(f"✅ Курс '{course[0]}' успешно удален.")
+    except (IndexError, ValueError):
+        update.message.reply_text("Использование: /delete_course <ID курса>")
 
 def clear_trials(update: Update, context: CallbackContext):
-    pass
+    """Очищает все неподтвержденные записи на пробные занятия."""
+    if update.message.chat_id not in get_admin_ids():
+        update.message.reply_text("У вас нет прав для выполнения этой команды.")
+        return
+
+    # Запрашиваем подтверждение
+    keyboard = [
+        [InlineKeyboardButton("Да ✅", callback_data="clear_trials_confirm")],
+        [InlineKeyboardButton("Нет ❌", callback_data="clear_trials_cancel")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    update.message.reply_text(
+        "⚠️ Вы уверены, что хотите удалить все неподтвержденные записи на пробные занятия?",
+        reply_markup=reply_markup
+    )
 
 def handle_clear_trials(update: Update, context: CallbackContext):
-    pass
+    """Обработчик подтверждения очистки записей."""
+    query = update.callback_query
+    query.answer()
+
+    if query.data == "clear_trials_confirm":
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM trial_lessons WHERE confirmed = FALSE')
+        deleted_count = cursor.rowcount
+        conn.commit()
+        conn.close()
+
+        query.edit_message_text(f"✅ Удалено {deleted_count} неподтвержденных записей.")
+    else:
+        query.edit_message_text("❌ Операция отменена.")
+
 
 # Состояния для ConversationHandler редактирования курса
 EDIT_COURSE_ID, EDIT_COURSE_NAME, EDIT_COURSE_DESCRIPTION, EDIT_COURSE_MIN_AGE, EDIT_COURSE_MAX_AGE = range(5)
@@ -520,7 +794,7 @@ def get_course_max_age_to_edit(update: Update, context: CallbackContext, skip=Fa
     cursor = conn.cursor()
     cursor.execute('''
         UPDATE courses 
-        SET name = %s, description = %s, min_age = %s, max_age = %s 
+        SET name = %s, description = %s, min_age = %s, max_age =%s 
         WHERE id = %s
     ''', (
         context.user_data['course_name'],
@@ -541,3 +815,131 @@ def edit_course(update:Update, context:CallbackContext):
 
 def create_course(update:Update, context:CallbackContext):
     pass
+
+def add_location(update: Update, context: CallbackContext):
+    """Добавляет новый район и адрес."""
+    if update.message.chat_id not in get_admin_ids():
+        update.message.reply_text("У вас нет прав для выполнения этой команды.")
+        return
+
+    try:
+        # Ожидаем формат: /add_location "Район" "Адрес"
+        text = " ".join(context.args)
+        district, address = text.split('"')[1::2]  # Разделяем по кавычкам
+
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            'INSERT INTO locations (district, address) VALUES (%s, %s) RETURNING id',
+            (district, address)
+        )
+        location_id = cursor.fetchone()[0]
+        conn.commit()
+        conn.close()
+
+        update.message.reply_text(
+            f"✅ Добавлен новый адрес:\n"
+            f"ID: {location_id}\n"
+            f"Район: {district}\n"
+            f"Адрес: {address}"
+        )
+    except (IndexError, ValueError):
+        update.message.reply_text(
+            'Использование: /add_location "Название района" "Полный адрес"\n'
+            'Пример: /add_location "Центральный" "ул. Ленина, 1"'
+        )
+
+def list_locations(update: Update, context: CallbackContext):
+    """Показывает список всех районов и адресов."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT id, district, address FROM locations ORDER BY district')
+    locations = cursor.fetchall()
+    conn.close()
+
+    if not locations:
+        update.message.reply_text("📍 Адреса еще не добавлены.")
+        return
+
+    message = "📍 Список районов и адресов:\n\n"
+    current_district = None
+
+    for loc in locations:
+        if loc[1] != current_district:
+            current_district = loc[1]
+            message += f"\n🏢 {current_district}:\n"
+        message += f"  • {loc[2]} (ID: {loc[0]})\n"
+
+    update.message.reply_text(message)
+
+def delete_location(update: Update, context: CallbackContext):
+    """Удаляет район и адрес."""
+    if update.message.chat_id not in get_admin_ids():
+        update.message.reply_text("У вас нет прав для выполнения этой команды.")
+        return
+
+    try:
+        location_id = int(context.args[0])
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        # Проверяем существование адреса
+        cursor.execute('SELECT district, address FROM locations WHERE id = %s', (location_id,))
+        location = cursor.fetchone()
+
+        if not location:
+            update.message.reply_text("❌ Адрес с таким ID не найден.")
+            conn.close()
+            return
+
+        # Удаляем адрес
+        cursor.execute('DELETE FROM locations WHERE id = %s', (location_id,))
+        conn.commit()
+        conn.close()
+
+        update.message.reply_text(
+            f"✅ Удален адрес:\n"
+            f"Район: {location[0]}\n"
+            f"Адрес: {location[1]}"
+        )
+    except (IndexError, ValueError):
+        update.message.reply_text("Использование: /delete_location <ID адреса>")
+
+def handle_clear_trials(update: Update, context: CallbackContext):
+    query = update.callback_query
+    query.answer()
+
+    if query.data== "clear_trials_confirm":
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM trial_lessons WHERE confirmed = FALSE')
+        deleted_count = cursor.rowcount
+        conn.commit()
+        conn.close()
+
+        query.edit_message_text(f"✅ Удалено {deleted_count} неподтвержденных записей.")
+    else:
+        query.edit_message_text("❌ Операция отменена.")
+
+def get_clear_trials_handler():
+    return CallbackQueryHandler(handle_clear_trials, pattern="^clear_trials_confirm$|^clear_trials_cancel$")
+
+def get_all_handlers():
+    return [
+        get_conversation_handler(),
+        CommandHandler('help', help_command),
+        CommandHandler('courses', list_courses),
+        CommandHandler('about', about),
+        CommandHandler('view_trials', view_trials),
+        CommandHandler('add_admin', add_admin_command),
+        CommandHandler('delete_course', delete_course),
+        CommandHandler('clear_trials', clear_trials),
+        get_clear_trials_handler(),
+        get_edit_course_handler(),
+        CommandHandler('add_location', add_location),
+        CommandHandler('list_locations', list_locations),
+        CommandHandler('delete_location', delete_location),
+        CommandHandler('confirm_trial', confirm_trial),
+        get_confirm_trial_handler(),
+        CommandHandler('filter_trials', filter_trials)
+    ]

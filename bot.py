@@ -9,7 +9,15 @@ from handlers import (
     delete_course,
     about,
     filter_trials,
-    cancel
+    cancel,
+    # Новые обработчики
+    clear_trials,
+    handle_clear_trials,
+    add_location,
+    list_locations,
+    delete_location,
+    confirm_trial,
+    get_confirm_trial_handler
 )
 from database import init_db
 from config import BOT_TOKEN
@@ -29,6 +37,7 @@ def main():
     # Добавление обработчиков
     dispatcher.add_handler(get_conversation_handler())
     dispatcher.add_handler(get_edit_course_handler())
+    dispatcher.add_handler(get_confirm_trial_handler())  # Добавляем обработчик подтверждения записи
 
     # Базовые команды
     dispatcher.add_handler(CommandHandler('add_admin', add_admin_command))
@@ -39,6 +48,16 @@ def main():
     dispatcher.add_handler(CommandHandler('about', about))
     dispatcher.add_handler(CommandHandler('filter_trials', filter_trials))
     dispatcher.add_handler(CommandHandler('cancel', cancel))
+    dispatcher.add_handler(CommandHandler('confirm_trial', confirm_trial))  # Добавляем команду подтверждения
+
+    # Новые команды
+    dispatcher.add_handler(CommandHandler('clear_trials', clear_trials))
+    dispatcher.add_handler(CallbackQueryHandler(handle_clear_trials, pattern='^clear_trials_'))
+
+    # Команды для работы с районами и адресами
+    dispatcher.add_handler(CommandHandler('add_location', add_location))
+    dispatcher.add_handler(CommandHandler('list_locations', list_locations))
+    dispatcher.add_handler(CommandHandler('delete_location', delete_location))
 
     # Запуск бота
     updater.start_polling()
